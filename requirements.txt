@@ -1,4 +1,4 @@
 streamlit
-google-cloud-aiplatform
+google-cloud-aiplatform>=1.72.0
 google-auth
 pillow
