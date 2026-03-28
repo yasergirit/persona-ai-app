@@ -3,11 +3,12 @@ import vertexai
 from vertexai.preview.vision_models import ImageGenerationModel, Image
 import json
 from google.oauth2 import service_account
+from openai import OpenAI
 
 # --- UI AYARLARI ---
 st.set_page_config(page_title="Persona AI", page_icon="🎨")
 
-# --- AUTH ---
+# --- AUTH (GOOGLE) ---
 def init_google_ai():
     try:
         if "gcp_service_account" in st.secrets:
@@ -18,56 +19,82 @@ def init_google_ai():
             return True
         return False
     except Exception as e:
-        st.error(f"Kimlik Doğrulama Hatası: {e}")
+        st.error(f"Google Auth Hatası: {e}")
         return False
 
 # --- ANA EKRAN ---
 st.title("✨ Persona AI")
-st.write("Selfie'ni çek ve yapay zekanın seni yeniden tasarlamasını izle.")
+st.write("Selfie'ni çek ve favori yapay zeka modelini seç!")
 
 if init_google_ai():
     # iPhone Kamerası
     img_file = st.camera_input("Kamerayı Aç")
     
     if img_file:
-        st.subheader("Bir Stil Seç")
+        st.divider()
         
-        # NOT: [1] etiketi, yapay zekaya 'yüklediğin resimdeki kişiyi buraya koy' der.
+        # 1. Sağlayıcı Seçimi
+        ai_provider = st.selectbox("Yapay Zeka Modeli Seçin:", ["Google Imagen 3 (Yüzü Korur)", "OpenAI DALL-E 3 (Yüksek Kalite Art)"])
+        
+        # 2. Stil Seçimi
         styles = {
-            "Cyberpunk": "A high-detail cyberpunk style portrait of the person in [1], neon lighting, futuristic city background, cinematic colors.",
-            "3D Pixar": "A cute 3D Pixar character of the person in [1], Disney style animation, vibrant colors, soft lighting.",
-            "Oil Painting": "A classic oil painting of the person in [1], rich brushstrokes, golden lighting, artistic canvas texture.",
-            "Viking": "A cinematic portrait of the person in [1] as a Viking warrior, wearing furs, snowy mountain background, 8k resolution."
+            "Cyberpunk": "A high-detail cyberpunk style portrait, neon lighting, futuristic city background, cinematic colors.",
+            "3D Pixar": "A cute 3D Pixar character, Disney style animation, vibrant colors, soft lighting.",
+            "Oil Painting": "A classic royal oil painting, rich brushstrokes, golden lighting, artistic canvas texture.",
+            "Viking": "A cinematic warrior portrait as a Viking warrior, wearing furs, snowy mountain background, 8k resolution."
         }
         choice = st.selectbox("Stil Seçin:", list(styles.keys()))
         
-        if st.button("OLUŞTUR ✨"):
-            with st.spinner("Yapay zeka portreni hazırlıyor..."):
+        # --- OLUŞTURMA BUTONU ---
+        if st.button("SİHRİ BAŞLAT ✨"):
+            with st.spinner(f"{ai_provider} kullanılarak portreniz hazırlanıyor..."):
                 try:
-                    # Model: Capability-001 (Özelleştirme yeteneği olan model)
-                    model = ImageGenerationModel.from_pretrained("imagen-3.0-capability-001")
+                    result_image = None
                     
-                    # Resmi Vertex AI formatına çevir
-                    user_img = Image(image_bytes=img_file.getvalue())
-                    
-                    # --- GÜNCEL SUBJECT REFERENCE ÇAĞRISI ---
-                    # Hata almamak için parametreyi 'reference_images' olarak veriyoruz.
-                    # Imagen 3'te maskesiz dönüşüm için en doğru yol budur.
-                    
-                    response = model.generate_images(
-                        prompt=styles[choice],
-                        reference_images=[user_img], # Selfie'yi referans olarak gönderiyoruz
-                        number_of_images=1,
-                        # guidance_scale=60 # Varsayılan olarak benzerliği korur
-                    )
-
-                    if response and response.images:
-                        st.success("Dönüşüm Tamamlandı!")
-                        st.image(response.images[0]._image_bytes, use_container_width=True)
-                        st.download_button("📥 Fotoğrafı Kaydet", response.images[0]._image_bytes, "persona_art.png")
+                    if ai_provider == "OpenAI DALL-E 3 (Yüksek Kalite Art)":
+                        # OpenAI API Çağrısı
+                        client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
+                        # DALL-E 3 için prompt düzenleme (Resmi birebir görmediği için betimleyici ekliyoruz)
+                        full_prompt = f"Professional portrait of a person in {styles[choice]} style. Realistic human features, high quality art."
+                        
+                        response = client.images.generate(
+                            model="dall-e-3",
+                            prompt=full_prompt,
+                            n=1,
+                            size="1024x1024"
+                        )
+                        # DALL-E 3 URL döner
+                        result_image = response.data[0].url
+                        
                     else:
-                        st.warning("Görsel oluşturulamadı. Güvenlik filtresi (Safety Filter) nedeniyle olabilir.")
+                        # Google Imagen 3 Çağrısı (Subject Reference)
+                        model = ImageGenerationModel.from_pretrained("imagen-3.0-capability-001")
+                        user_img = Image(image_bytes=img_file.getvalue())
+                        
+                        # [1] etiketi ekleyerek yüz korumayı aktifleştiriyoruz
+                        google_prompt = styles[choice].replace("portrait", "portrait of the person in [1]")
+                        
+                        response = model.generate_images(
+                            prompt=google_prompt,
+                            reference_images=[user_img],
+                            number_of_images=1
+                        )
+                        # Google bytes döner
+                        if response.images:
+                            result_image = response.images[0]._image_bytes
+
+                    # --- SONUCU GÖSTER ---
+                    if result_image:
+                        st.success("Dönüşüm Tamamlandı!")
+                        st.image(result_image, use_container_width=True)
+                        
+                        # Kaydetme butonu (Eğer OpenAI ise URL'den indirmek için link verir)
+                        if isinstance(result_image, str): # OpenAI URL durumu
+                            st.markdown(f'[📥 Fotoğrafı İndir]({result_image})')
+                        else: # Google Bytes durumu
+                            st.download_button("📥 Fotoğrafı Kaydet", result_image, "persona_art.png", "image/png")
+                    else:
+                        st.warning("Görsel oluşturulamadı. Lütfen tekrar deneyin.")
                         
                 except Exception as e:
-                    st.error(f"Dönüştürme Hatası: {str(e)}")
-                    st.info("Eğer 'unexpected keyword' hatası alırsanız, Streamlit'ten uygulamayı 'Reboot' edin.")
+                    st.error(f"Hata Oluştu: {str(e)}")
