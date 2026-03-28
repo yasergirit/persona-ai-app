@@ -4,88 +4,92 @@ from vertexai.preview.vision_models import ImageGenerationModel, Image
 import json
 from google.oauth2 import service_account
 
-# --- MOBILE UI SETUP ---
-st.set_page_config(page_title="Persona AI", page_icon="🎨")
+# --- MOBILE-FIRST UI ---
+st.set_page_config(page_title="Persona AI", page_icon="📸")
 
-# CSS to make it look like a real app on iPhone
 st.markdown("""
     <style>
-    .stApp { background-color: #0e1117; color: white; }
+    .stApp { background-color: #0E1117; color: white; }
     .stButton>button { 
-        width: 100%; border-radius: 25px; height: 3.5rem; 
-        background: linear-gradient(90deg, #4F46E5, #7C3AED);
+        width: 100%; border-radius: 30px; height: 3.5rem; 
+        background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
         color: white; border: none; font-weight: bold; font-size: 1.1rem;
+        box-shadow: 0 4px 15px rgba(168, 85, 247, 0.3);
     }
-    [data-testid="stHeader"] { background: rgba(0,0,0,0); }
+    .stCameraInput { border-radius: 20px; overflow: hidden; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- GOOGLE AUTH FROM STREAMLIT SECRETS ---
-def init_google_ai():
+# --- GOOGLE AUTHENTICATION ---
+def init_google():
     try:
-        # Looks for 'gcp_service_account' in Streamlit Cloud Secrets
         if "gcp_service_account" in st.secrets:
-            key_dict = json.loads(st.secrets["gcp_service_account"])
-            creds = service_account.Credentials.from_service_account_info(key_dict)
-            vertexai.init(project=key_dict["project_id"], location="us-central1", credentials=creds)
+            # This pulls the JSON from your Streamlit Cloud Secrets dashboard
+            info = json.loads(st.secrets["gcp_service_account"])
+            creds = service_account.Credentials.from_service_account_info(info)
+            vertexai.init(project=info["project_id"], location="us-central1", credentials=creds)
             return True
         else:
-            st.error("Setup Required: Paste your Google JSON key into Streamlit Secrets.")
+            st.warning("⚠️ Setup Required: Please add your GCP JSON to Streamlit Secrets.")
             return False
     except Exception as e:
-        st.error(f"Auth Error: {e}")
+        st.error(f"Authentication Error: {e}")
         return False
 
 # --- MAIN APP ---
 st.title("✨ Persona AI")
-st.write("Take a selfie and transform your style.")
+st.write("Turn your selfie into a stylized masterpiece.")
 
-if init_google_ai():
-    # iPhone Camera Input
-    img_file = st.camera_input("Take a selfie")
+if init_google():
+    # iPhone-ready camera input
+    user_file = st.camera_input("Take a selfie")
     
-    if not img_file:
-        img_file = st.file_uploader("Or upload from gallery", type=["jpg", "png"])
+    if not user_file:
+        user_file = st.file_uploader("Or upload a portrait", type=["jpg", "jpeg", "png"])
 
-    if img_file:
+    if user_file:
         st.divider()
-        st.subheader("Select Your Vibe")
+        st.subheader("Choose Your Style")
         
-        # Style Dictionary (Using the [1] reference tag for Imagen 3)
+        # 2x2 Grid for styles
         styles = {
-            "Cyberpunk": "A high-detail cyberpunk portrait of [1], neon lighting, futuristic.",
-            "3D Pixar": "A 3D animated character version of [1], Pixar style, vibrant.",
-            "Oil Painting": "A classic oil painting of [1], rich brushstrokes, gold lighting.",
-            "Viking": "A cinematic warrior portrait of [1] with fur clothing and snowy mountains."
+            "Cyberpunk": "A high-quality cyberpunk portrait of [1], neon lighting, futuristic fashion, night city background.",
+            "Disney Pixar": "A cute 3D animated character version of [1], smooth textures, expressive eyes, Pixar style.",
+            "Oil Painting": "A classic textured oil painting of [1] on canvas, rich brushstrokes, dramatic lighting.",
+            "Pencil Sketch": "A professional graphite pencil sketch of [1], charcoal shading, artistic hand-drawn look."
         }
         
-        # Style Selection
-        choice = st.selectbox("Choose Style:", list(styles.keys()))
+        selected_style = st.selectbox("Style Selection", list(styles.keys()), label_visibility="collapsed")
         
-        if st.button("CREATE MAGIC ✨"):
-            with st.spinner("AI is reimagining you..."):
+        if st.button("CREATE ART ✨"):
+            with st.spinner("AI is reimagining you... (takes ~15 seconds)"):
                 try:
+                    # Initialize Imagen 3
                     model = ImageGenerationModel.from_pretrained("imagen-3.0-capability-001")
-                    user_img = Image(image_bytes=img_file.getvalue())
                     
+                    # Convert uploaded file to Vertex Image format
+                    source_img = Image(image_bytes=user_file.getvalue())
+                    
+                    # Generate the Image-to-Image result
                     response = model.edit_image(
-                        prompt=styles[choice],
-                        reference_images=[user_img],
+                        prompt=styles[selected_style],
+                        reference_images=[source_img],
                         number_of_images=1,
-                        guidance_scale=60 
+                        guidance_scale=60 # Balanced between likeness and style
                     )
                     
-                    # Display Result
-                    st.success("Your Masterpiece is Ready!")
-                    result_bytes = response.images[0]._image_bytes
-                    st.image(result_bytes, use_container_width=True)
+                    # Output Result
+                    st.success("Success!")
+                    result_img = response.images[0]._image_bytes
+                    st.image(result_img, use_container_width=True)
                     
-                    # Native iPhone Save button
+                    # Download for iPhone
                     st.download_button(
-                        label="📥 Save to Photos",
-                        data=result_bytes,
-                        file_name="persona_art.png",
+                        label="📥 Save to My Photos",
+                        data=result_img,
+                        file_name=f"persona_{selected_style.lower()}.png",
                         mime="image/png"
                     )
+                    
                 except Exception as e:
-                    st.error(f"Generation failed: {e}")
+                    st.error(f"Something went wrong: {e}")
