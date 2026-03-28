@@ -23,59 +23,56 @@ def init_google_ai():
 
 # --- ANA EKRAN ---
 st.title("✨ Persona AI")
+st.write("Selfie'ni çek ve stilini seç!")
 
 if init_google_ai():
-    img_file = st.camera_input("Bir selfie çekin")
+    img_file = st.camera_input("Kamerayı Aç")
     
     if img_file:
         styles = {
-            "Cyberpunk": "A high-detail cyberpunk portrait of [1], neon lights, futuristic city.",
-            "3D Pixar": "A cute 3D Pixar character of [1], vibrant colors, Disney style.",
-            "Yağlı Boya": "An oil painting of [1], artistic brushstrokes, masterpiece.",
-            "Viking": "A Viking warrior portrait of [1], fur armor, cinematic background."
+            "Cyberpunk": "A high-detail cyberpunk portrait of the person, neon lights, futuristic city background, 8k cinematic.",
+            "3D Pixar": "A cute 3D Pixar-style animated character of the person, vibrant colors, Disney style.",
+            "Yağlı Boya": "A classic royal oil painting of the person, rich brushstrokes, golden lighting, masterpiece.",
+            "Viking": "A cinematic portrait of the person as a Viking warrior, fur clothing, snowy mountain background."
         }
-        choice = st.selectbox("Stil Seç:", list(styles.keys()))
+        choice = st.selectbox("Stil Seçin:", list(styles.keys()))
         
-        if st.button("OLUŞTUR ✨"):
-            with st.spinner("Yapay zeka seni yeniden tasarlıyor..."):
+        if st.button("STİLİ UYGULA ✨"):
+            with st.spinner("Yapay zeka seni dönüştürüyor..."):
                 try:
-                    # Model: Mutlaka capability-001 olmalı
+                    # Model: Capability-001 özelleştirilmiş işlemler için en iyisidir
                     model = ImageGenerationModel.from_pretrained("imagen-3.0-capability-001")
+                    
+                    # Resmi Vertex AI formatına çevir
                     user_img = Image(image_bytes=img_file.getvalue())
                     
-                    # --- HATA ÖNLEYİCİ ÇAĞRI (DYNAMIC CALL) ---
-                    # SDK sürümleri arasındaki parametre farkını çözmek için:
+                    # --- HATA ÇÖZÜCÜ PARAMETRE YAPISI ---
+                    # Hata mesajında istenen 'context_images' parametresini kullanıyoruz.
+                    # 'edit_image' fonksiyonu maskesiz (mask-free) düzenleme için bu bağlamı ister.
+                    
+                    response = model.edit_image(
+                        prompt=styles[choice],
+                        base_image=user_img,         # Düzenlenecek temel resim
+                        context_images=[user_img],   # Hata mesajının istediği kritik parametre!
+                        number_of_images=1,
+                    )
+
+                    if response.images:
+                        st.success("İşte Yeni Tarzın!")
+                        st.image(response.images[0]._image_bytes, use_container_width=True)
+                        st.download_button("📥 Fotoğrafı İndir", response.images[0]._image_bytes, "persona_art.png")
+                    else:
+                        st.warning("Görsel oluşturulamadı. Lütfen farklı bir ışıkta tekrar deneyin.")
+                        
+                except Exception as e:
+                    # Eğer hala parametre hatası verirse, 'reference_images' olarak dene (Fallback)
                     try:
-                        # 1. Yöntem: En güncel yöntem (reference_images)
                         response = model.generate_images(
                             prompt=styles[choice],
                             reference_images=[user_img],
-                            number_of_images=1,
+                            number_of_images=1
                         )
-                    except TypeError:
-                        # 2. Yöntem: Eğer reference_images hatası verirse, 'image' parametresini dene
-                        # Bazı SDK sürümlerinde Subject Reference bu isimle çağrılır
-                        try:
-                            response = model.generate_images(
-                                prompt=styles[choice],
-                                image=user_img,
-                                number_of_images=1,
-                            )
-                        except TypeError:
-                            # 3. Yöntem: Edit Image fallback (Garantili yöntem)
-                            # Eğer capability modelleri çalışmazsa edit modunda dene
-                            response = model.edit_image(
-                                prompt=styles[choice],
-                                base_image=user_img,
-                                number_of_images=1,
-                            )
-
-                    if response.images:
-                        st.success("Dönüşüm Tamamlandı!")
                         st.image(response.images[0]._image_bytes, use_container_width=True)
-                        st.download_button("📥 Kaydet", response.images[0]._image_bytes, "persona.png")
-                    else:
-                        st.warning("Görsel oluşturulamadı. Güvenlik filtresi (Safety Filter) nedeniyle olabilir.")
-                        
-                except Exception as e:
-                    st.error(f"API Hatası: {str(e)}")
+                    except Exception as fallback_error:
+                        st.error(f"Dönüştürme Hatası: {str(e)}")
+                        st.info("İpucu: Fotoğrafın çok yakın veya çok uzak olmamasına dikkat edin.")
