@@ -23,63 +23,51 @@ def init_google_ai():
 
 # --- ANA EKRAN ---
 st.title("✨ Persona AI")
+st.write("Selfie'ni çek ve yapay zekanın seni yeniden tasarlamasını izle.")
 
 if init_google_ai():
-    img_file = st.camera_input("Bir selfie çekin")
+    # iPhone Kamerası
+    img_file = st.camera_input("Kamerayı Aç")
     
     if img_file:
+        st.subheader("Bir Stil Seç")
+        
+        # NOT: [1] etiketi, yapay zekaya 'yüklediğin resimdeki kişiyi buraya koy' der.
         styles = {
-            "Cyberpunk": "A high-detail cyberpunk portrait of the person in [1], neon lights, futuristic city background, 8k cinematic.",
-            "3D Pixar": "A cute 3D Pixar-style animated character of the person in [1], Disney style, vibrant colors.",
-            "Yağlı Boya": "A classic royal oil painting of the person in [1], rich brushstrokes, museum masterpiece.",
-            "Viking": "A cinematic portrait of the person in [1] as a Viking warrior, fur clothing, snowy mountain."
+            "Cyberpunk": "A high-detail cyberpunk style portrait of the person in [1], neon lighting, futuristic city background, cinematic colors.",
+            "3D Pixar": "A cute 3D Pixar character of the person in [1], Disney style animation, vibrant colors, soft lighting.",
+            "Oil Painting": "A classic oil painting of the person in [1], rich brushstrokes, golden lighting, artistic canvas texture.",
+            "Viking": "A cinematic portrait of the person in [1] as a Viking warrior, wearing furs, snowy mountain background, 8k resolution."
         }
         choice = st.selectbox("Stil Seçin:", list(styles.keys()))
         
         if st.button("OLUŞTUR ✨"):
-            with st.spinner("Yapay zeka en uygun yöntemi deniyor..."):
+            with st.spinner("Yapay zeka portreni hazırlıyor..."):
                 try:
-                    # Model: Capability-001 kişi referansı için en iyisidir
+                    # Model: Capability-001 (Özelleştirme yeteneği olan model)
                     model = ImageGenerationModel.from_pretrained("imagen-3.0-capability-001")
+                    
+                    # Resmi Vertex AI formatına çevir
                     user_img = Image(image_bytes=img_file.getvalue())
                     
-                    response = None
+                    # --- GÜNCEL SUBJECT REFERENCE ÇAĞRISI ---
+                    # Hata almamak için parametreyi 'reference_images' olarak veriyoruz.
+                    # Imagen 3'te maskesiz dönüşüm için en doğru yol budur.
                     
-                    # --- YÖNTEM 1: SUBJECT REFERENCE (Modern Yöntem) ---
-                    try:
-                        response = model.generate_images(
-                            prompt=styles[choice],
-                            reference_images=[user_img], # En yeni parametre ismi
-                            number_of_images=1
-                        )
-                    except Exception:
-                        # --- YÖNTEM 2: CONTEXT IMAGES (Alternatif Yöntem) ---
-                        try:
-                            response = model.generate_images(
-                                prompt=styles[choice],
-                                context_images=[user_img], # Bazı sürümlerde bu isimdedir
-                                number_of_images=1
-                            )
-                        except Exception:
-                            # --- YÖNTEM 3: EDIT IMAGE (Fallback / Geri Dönüş) ---
-                            # Eğer yukarıdakiler "unexpected keyword" derse, en stabil edit moduna döneriz.
-                            # Hata mesajındaki 'Must provide at least one context_image' uyarısını burada çözeriz.
-                            try:
-                                # Bu yöntem, maskesiz düzenleme (stylization) için en garantisidir.
-                                response = model.edit_image(
-                                    prompt=styles[choice],
-                                    base_image=user_img,
-                                    number_of_images=1
-                                )
-                            except Exception as e_final:
-                                st.error(f"Tüm yöntemler denendi ancak başarılı olunamadı: {str(e_final)}")
+                    response = model.generate_images(
+                        prompt=styles[choice],
+                        reference_images=[user_img], # Selfie'yi referans olarak gönderiyoruz
+                        number_of_images=1,
+                        # guidance_scale=60 # Varsayılan olarak benzerliği korur
+                    )
 
                     if response and response.images:
                         st.success("Dönüşüm Tamamlandı!")
                         st.image(response.images[0]._image_bytes, use_container_width=True)
-                        st.download_button("📥 Kaydet", response.images[0]._image_bytes, "sonuc.png")
-                    elif response:
-                        st.warning("Güvenlik filtresi nedeniyle görsel oluşturulamadı.")
+                        st.download_button("📥 Fotoğrafı Kaydet", response.images[0]._image_bytes, "persona_art.png")
+                    else:
+                        st.warning("Görsel oluşturulamadı. Güvenlik filtresi (Safety Filter) nedeniyle olabilir.")
                         
                 except Exception as e:
-                    st.error(f"Kritik Hata: {str(e)}")
+                    st.error(f"Dönüştürme Hatası: {str(e)}")
+                    st.info("Eğer 'unexpected keyword' hatası alırsanız, Streamlit'ten uygulamayı 'Reboot' edin.")
